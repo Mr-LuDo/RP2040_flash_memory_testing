@@ -37,9 +37,11 @@ extern "C" {
 #define FLASH_TARGET_OFFSET     (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
 #define FLASH_PAGES_PER_SECTOR  (FLASH_SECTOR_SIZE / FLASH_PAGE_SIZE)
 static int rx_page_addr;
+static int tx_page_addr;
 // static int *p, value;
 
-static uint8_t current_page = -1;
+static uint8_t current_page = NULL;
+// static uint8_t current_page = -1;
 
 const static int buf_num_of_data_var = (FLASH_PAGE_SIZE / sizeof(int));
 const static int buf_num_data_used = 5;
@@ -58,6 +60,8 @@ static std::bitset<buf_type_size * CHAR_BIT> rx_value;
 // ----------------------------------------------------------------
 
 void setupFlash ();
+void updateCurrentPage(int8_t page_target);
+void updatePageAddress();
 void readFlashData ();
 void readFlashSectorData ();
 void updateFlashData ();
@@ -84,7 +88,7 @@ void setupFlash () {
 
 
     // set read flash essential
-    rx_page_addr = XIP_BASE +  FLASH_TARGET_OFFSET;     // Compute the memory-mapped address, remembering to include the offset for RAM
+    // rx_page_addr = XIP_BASE +  FLASH_TARGET_OFFSET;     // Compute the memory-mapped address, remembering to include the offset for RAM
     // p = (int *)addr;                            // Place an int pointer at our memory-mapped address
     // value = *p;                                 // Store the value at this address into a variable for later use
     
@@ -94,8 +98,30 @@ void setupFlash () {
 
 }
 
+// update Current page to specific page or
+// update to the next one
+void updateCurrentPage(int8_t page_target = -1) {
+    if (page_target == -1)
+        ++current_page;
+    else
+        current_page = page_target;
+
+    if (current_page >= FLASH_PAGES_PER_SECTOR) {
+        current_page = 0;
+        // readFlashSectorData();
+        eraseFlashData();
+    }
+    updatePageAddress();
+}
+
+void updatePageAddress() {
+    tx_page_addr = FLASH_TARGET_OFFSET + (current_page * FLASH_PAGE_SIZE);
+    rx_page_addr = XIP_BASE + tx_page_addr;
+}
+
+// read and save page data
 void readFlashData () {
-    // read and save page data
+    updatePageAddress();
     int* pointer_flash_value = (int *)rx_page_addr;
     for (auto pos = 0; pos < buf_num_data_used; ++pos, ++pointer_flash_value) {
         buf_rx[pos] = *pointer_flash_value;
@@ -157,7 +183,7 @@ void readFlashSectorData () {
         if (counter == buf_num_data_used) {
             Serial.println();
             counter = 0;
-            Serial.flush();
+            // Serial.flush();
         }
     }
 
@@ -165,29 +191,18 @@ void readFlashSectorData () {
 
 void updateFlashData () {
     
+    updatePageAddress();
     uint32_t ints = save_and_disable_interrupts();
-    
     // updating previous page - as done
-    // buf_tx[0] = 1;
-    int previous_addr = FLASH_TARGET_OFFSET + (current_page * FLASH_PAGE_SIZE);
-    // flash_range_program(previous_addr, (uint8_t *)buf_tx, FLASH_PAGE_SIZE);
-    
     buf_rx[0] = 1;
-    flash_range_program(previous_addr, (uint8_t *)buf_rx, FLASH_PAGE_SIZE);
+    flash_range_program(tx_page_addr, (uint8_t *)buf_rx, FLASH_PAGE_SIZE);
     
-    // updating current page info
-    buf_tx[0] = -1;
-    ++current_page;
-    if (current_page >= FLASH_PAGES_PER_SECTOR) {
-        eraseFlashData();
-        current_page = 0;
-    }
-    rx_page_addr = XIP_BASE +  FLASH_TARGET_OFFSET + (current_page * FLASH_PAGE_SIZE);
+    updateCurrentPage();
+    
     // updating new page with data
-    int tx_page_addr = FLASH_TARGET_OFFSET + (current_page * FLASH_PAGE_SIZE);
     flash_range_program(tx_page_addr, (uint8_t *)buf_tx, FLASH_PAGE_SIZE);
     restore_interrupts (ints);
-    
+   
 }
 
 void eraseFlashData () {
@@ -213,6 +228,7 @@ void updateFlashBuffer () {
 }
 
 void updateFlashBuffer (uint8_t val) {
+    buf_tx[0] == -1;
     for (auto pos = 1; pos < buf_num_of_data_var; ++pos) {
         buf_tx[pos] =  val + (current_page * buf_num_data_used + pos);
         buf_tx[pos] = 0xFFFFFFFF ^ (1u << (val * pos));
@@ -239,7 +255,8 @@ void findCurrentPage () {
         Serial.println((*pointer_flash_value) == -1? "Current page": " Old data");
 
         if ( *pointer_flash_value == -1 ){
-            current_page = page;                // we found our first empty page, remember it
+            updateCurrentPage(page);                // we found our first empty page, remember it
+            // current_page = page;                // we found our first empty page, remember it
             break;
         }
     }

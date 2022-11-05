@@ -37,8 +37,8 @@ void loop() {
 
 	while (true) {
 
-		for (auto i = 0u; i < FLASH_PAGES_PER_SECTOR; ++i) {
-			sleep_ms(1000);
+		for (auto i = 0u; i < FLASH_PAGES_PER_SECTOR / 2; ++i) {
+			sleep_ms(500);
 			
 			updateFlashBuffer();
 
