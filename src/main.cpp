@@ -37,8 +37,8 @@ void loop() {
 
 	while (true) {
 
-		for (auto i = 0; i < FLASH_PAGES_PER_SECTOR; ++i) {
-			sleep_ms(2000);
+		for (auto i = 0u; i < FLASH_PAGES_PER_SECTOR; ++i) {
+			sleep_ms(1000);
 			
 			updateFlashBuffer();
 
@@ -51,7 +51,6 @@ void loop() {
 		// waiting to restart - by button KEY
 		while (true) {
 			sleep_ms(50);
-			// Serial.println("waiting for restart");
 
 			if (digitalRead(GPIO_KEY)) {
 				Serial.println("KEY button pressed");

@@ -36,7 +36,7 @@ extern "C" {
 
 #define FLASH_TARGET_OFFSET     (PICO_FLASH_SIZE_BYTES - FLASH_SECTOR_SIZE)
 #define FLASH_PAGES_PER_SECTOR  (FLASH_SECTOR_SIZE / FLASH_PAGE_SIZE)
-static int addr;
+static int rx_page_addr;
 // static int *p, value;
 
 static uint8_t current_page = -1;
@@ -72,18 +72,19 @@ void printFlashBuffer ();
 
 void setupFlash () {
     
-    tx_value.reset();
-    rx_value.reset();
+    // tx_value.reset();
+    // rx_value.reset();
     resetFlashBuffer();
 
-    for (auto& val : str_tx_rx)
-        val = ' ';
-    str_tx_rx[str_tx_rx.length() / 2] = '-';
-    str_tx_rx[str_tx_rx.length() - 1] = '\0';
+
+    // for (auto& val : str_tx_rx)
+    //     val = ' ';
+    // str_tx_rx[str_tx_rx.length() / 2] = '-';
+    // str_tx_rx[str_tx_rx.length() - 1] = '\0';
 
 
     // set read flash essential
-    addr = XIP_BASE +  FLASH_TARGET_OFFSET;     // Compute the memory-mapped address, remembering to include the offset for RAM
+    rx_page_addr = XIP_BASE +  FLASH_TARGET_OFFSET;     // Compute the memory-mapped address, remembering to include the offset for RAM
     // p = (int *)addr;                            // Place an int pointer at our memory-mapped address
     // value = *p;                                 // Store the value at this address into a variable for later use
     
@@ -94,13 +95,11 @@ void setupFlash () {
 }
 
 void readFlashData () {
-    
     // read and save page data
-    int* pointer_flash_value = (int *)addr;
+    int* pointer_flash_value = (int *)rx_page_addr;
     for (auto pos = 0; pos < buf_num_data_used; ++pos, ++pointer_flash_value) {
         buf_rx[pos] = *pointer_flash_value;
     }
-
 }
 
 void readFlashSectorData () {
@@ -108,7 +107,7 @@ void readFlashSectorData () {
     int* pointer_flash_value = nullptr;
     // int value;
     
-    static int value_arr[FLASH_PAGES_PER_SECTOR * buf_num_data_used];
+    int value_arr[FLASH_PAGES_PER_SECTOR * buf_num_data_used];
     int j = 0;
 
     // reseting all variables
@@ -116,10 +115,7 @@ void readFlashSectorData () {
         val = 0;
     j = 0;
 
-    sleep_ms(100);
-    uint32_t ints = save_and_disable_interrupts();
-
-    for (auto page = 0; page < FLASH_PAGES_PER_SECTOR; ++page) {
+    for (auto page = 0u; page < FLASH_PAGES_PER_SECTOR; ++page) {
         page_addr = XIP_BASE +  FLASH_TARGET_OFFSET + (page * FLASH_PAGE_SIZE);
         // sleep_ms(100);
         
@@ -129,7 +125,13 @@ void readFlashSectorData () {
         pointer_flash_value = (int*)page_addr;
         for (auto pos = 0; pos < buf_num_data_used; ++j, ++pos, ++pointer_flash_value) {
 
+            // value_arr[(page * buf_num_data_used) + pos] = *((int*)rx_pages_addr_arr[page] + pos);
+            
+            // working kinda
             value_arr[j] = *pointer_flash_value;
+
+
+
             // Serial.print(*pointer_flash_value);
             // Serial.print(" ");
 
@@ -145,21 +147,18 @@ void readFlashSectorData () {
         // sleep_ms(500);
     }
 
-    restore_interrupts (ints);
 
     uint8_t counter = 0;
     for (auto& i : value_arr) {
         Serial.print(i);
         Serial.print(" ");
-        // sleep_ms(50);
 
         ++counter;
-        if (counter == 5) {
+        if (counter == buf_num_data_used) {
             Serial.println();
             counter = 0;
+            Serial.flush();
         }
-
-        // sleep_ms(100);
     }
 
 }
@@ -169,9 +168,12 @@ void updateFlashData () {
     uint32_t ints = save_and_disable_interrupts();
     
     // updating previous page - as done
-    buf_tx[0] = 1;
+    // buf_tx[0] = 1;
     int previous_addr = FLASH_TARGET_OFFSET + (current_page * FLASH_PAGE_SIZE);
-    flash_range_program(previous_addr, (uint8_t *)buf_tx, FLASH_PAGE_SIZE);
+    // flash_range_program(previous_addr, (uint8_t *)buf_tx, FLASH_PAGE_SIZE);
+    
+    buf_rx[0] = 1;
+    flash_range_program(previous_addr, (uint8_t *)buf_rx, FLASH_PAGE_SIZE);
     
     // updating current page info
     buf_tx[0] = -1;
@@ -180,14 +182,11 @@ void updateFlashData () {
         eraseFlashData();
         current_page = 0;
     }
-    addr = XIP_BASE +  FLASH_TARGET_OFFSET + (current_page * FLASH_PAGE_SIZE);
-    
+    rx_page_addr = XIP_BASE +  FLASH_TARGET_OFFSET + (current_page * FLASH_PAGE_SIZE);
     // updating new page with data
-    flash_range_program(FLASH_TARGET_OFFSET + (current_page * FLASH_PAGE_SIZE), (uint8_t *)buf_tx, FLASH_PAGE_SIZE);
+    int tx_page_addr = FLASH_TARGET_OFFSET + (current_page * FLASH_PAGE_SIZE);
+    flash_range_program(tx_page_addr, (uint8_t *)buf_tx, FLASH_PAGE_SIZE);
     restore_interrupts (ints);
-
-    Serial.print("current_page = ");
-    Serial.println(current_page);
     
 }
 
@@ -202,11 +201,6 @@ void resetFlashBuffer () {
     for (auto& val : buf_rx) {
         val = -1;
     }
-
-    // for (auto pos = 0; pos < buf_num_of_data_var; ++pos) {
-    //     buf_tx[pos] = -1;
-    //     buf_rx[pos] = -1;
-    // }
 }
 
 void updateFlashBuffer () {
@@ -230,18 +224,19 @@ void findCurrentPage () {
     readFlashSectorData();
 
     Serial.println("--------------------------------------------");
-    for (auto page = 0; page < FLASH_PAGES_PER_SECTOR; ++page) {
-        addr = XIP_BASE +  FLASH_TARGET_OFFSET + (page * FLASH_PAGE_SIZE);
+    for (auto page = 0u; page < FLASH_PAGES_PER_SECTOR; ++page) {
+        rx_page_addr = XIP_BASE +  FLASH_TARGET_OFFSET + (page * FLASH_PAGE_SIZE);
 
         // 0xFFFFFFFF cast as an int is -1 so this is how we detect an empty page
-        int* pointer_flash_value = (int *)addr;
+        int* pointer_flash_value = (int *)rx_page_addr;
         Serial.print("page = ");
         Serial.print(page);
         Serial.print("   -   ");
         // Serial.print("pointer_flash_value = ");
-        Serial.println(*pointer_flash_value);
-
-
+        Serial.print(*pointer_flash_value);
+        
+        Serial.print("   -   ");
+        Serial.println((*pointer_flash_value) == -1? "Current page": " Old data");
 
         if ( *pointer_flash_value == -1 ){
             current_page = page;                // we found our first empty page, remember it
@@ -273,6 +268,9 @@ void printFlashBuffer () {
     //     Serial.print(".  ");
     //     Serial.println(str_tx_rx);
     // }
+    
+    Serial.print("current_page = ");
+    Serial.println(current_page);
 
     Serial.println("    tx  -  rx");
     for (auto j = 0; j < buf_num_data_used; ++j) {
