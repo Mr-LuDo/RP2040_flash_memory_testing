@@ -53,14 +53,22 @@ void loop() {
 			sleep_ms(50);
 
 			if (digitalRead(GPIO_KEY)) {
-				Serial.println("KEY button pressed");
+				Serial.println("KEY button pressed - please release to continue");
 				sleep_ms(100);
-				while (digitalRead(GPIO_KEY)) {
-					Serial.println("please release the KEY button");
-					sleep_ms(2000);
+				while (true) {
+					sleep_ms(100);
+					bool key_released = !digitalRead(GPIO_KEY);
+					if (key_released)
+						break;
 				}
+				// while (digitalRead(GPIO_KEY)) {
+				// 	Serial.println("please release the KEY button");
+				// 	sleep_ms(100);
+				// }
 				
-				findCurrentPage ();
+				findCurrentPage();
+				readFlashData();
+    			printFlashBuffer();
 				break;
 			}
 

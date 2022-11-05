@@ -43,6 +43,10 @@ static int tx_page_addr;
 static uint8_t current_page = NULL;
 // static uint8_t current_page = -1;
 
+#define PAGE_STATUS     0
+#define STATUS_EMPTY    0xFFFFFFFF
+#define STATUS_USED     1
+
 const static int buf_num_of_data_var = (FLASH_PAGE_SIZE / sizeof(int));
 const static int buf_num_data_used = 5;
 const static uint8_t buf_type_size = sizeof(int);
@@ -60,7 +64,7 @@ static std::bitset<buf_type_size * CHAR_BIT> rx_value;
 // ----------------------------------------------------------------
 
 void setupFlash ();
-void updateCurrentPage(int8_t page_target);
+void updateCurrentPage(int page_target);
 void updatePageAddress();
 void readFlashData ();
 void readFlashSectorData ();
@@ -100,7 +104,7 @@ void setupFlash () {
 
 // update Current page to specific page or
 // update to the next one
-void updateCurrentPage(int8_t page_target = -1) {
+void updateCurrentPage(int page_target = -1) {
     if (page_target == -1)
         ++current_page;
     else
@@ -123,7 +127,7 @@ void updatePageAddress() {
 void readFlashData () {
     updatePageAddress();
     int* pointer_flash_value = (int *)rx_page_addr;
-    for (auto pos = 0; pos < buf_num_data_used; ++pos, ++pointer_flash_value) {
+    for (auto pos = PAGE_STATUS; pos < buf_num_data_used; ++pos, ++pointer_flash_value) {
         buf_rx[pos] = *pointer_flash_value;
     }
 }
@@ -191,13 +195,15 @@ void readFlashSectorData () {
 
 void updateFlashData () {
     
-    updatePageAddress();
+    updateCurrentPage();
+    
     uint32_t ints = save_and_disable_interrupts();
     // updating previous page - as done
-    buf_rx[0] = 1;
-    flash_range_program(tx_page_addr, (uint8_t *)buf_rx, FLASH_PAGE_SIZE);
+    // updatePageAddress();
+    // buf_rx[PAGE_STATUS] = 1;
+    // flash_range_program(tx_page_addr, (uint8_t *)buf_rx, FLASH_PAGE_SIZE);
     
-    updateCurrentPage();
+    // updateCurrentPage();
     
     // updating new page with data
     flash_range_program(tx_page_addr, (uint8_t *)buf_tx, FLASH_PAGE_SIZE);
@@ -211,27 +217,30 @@ void eraseFlashData () {
 
 void resetFlashBuffer () {
     for (auto& val : buf_tx) {
-        val = -1;
+        val = STATUS_EMPTY;
+        // val = -1;
     }
     for (auto& val : buf_rx) {
-        val = -1;
+        val = STATUS_EMPTY;
+        // val = -1;
     }
 }
 
 void updateFlashBuffer () {
     static int max_val = 0;
     
-    resetFlashBuffer();
+    // resetFlashBuffer();
+    buf_tx[PAGE_STATUS] = STATUS_USED;
     for (auto pos = 1; pos < buf_num_data_used; ++pos, ++max_val) {
         buf_tx[pos] =  max_val;
     }
 }
 
 void updateFlashBuffer (uint8_t val) {
-    buf_tx[0] == -1;
+    buf_tx[PAGE_STATUS] == STATUS_EMPTY;
     for (auto pos = 1; pos < buf_num_of_data_var; ++pos) {
         buf_tx[pos] =  val + (current_page * buf_num_data_used + pos);
-        buf_tx[pos] = 0xFFFFFFFF ^ (1u << (val * pos));
+        buf_tx[pos] = STATUS_EMPTY ^ (1u << (val * pos));
     }
 }
 
@@ -239,24 +248,38 @@ void findCurrentPage () {
     
     readFlashSectorData();
 
+    int page_satus_addr;
     Serial.println("--------------------------------------------");
-    for (auto page = 0u; page < FLASH_PAGES_PER_SECTOR; ++page) {
-        rx_page_addr = XIP_BASE +  FLASH_TARGET_OFFSET + (page * FLASH_PAGE_SIZE);
+    for (auto page = 0; page < FLASH_PAGES_PER_SECTOR; ++page) {
+        page_satus_addr = XIP_BASE +  FLASH_TARGET_OFFSET + (page * FLASH_PAGE_SIZE);
 
         // 0xFFFFFFFF cast as an int is -1 so this is how we detect an empty page
-        int* pointer_flash_value = (int *)rx_page_addr;
-        Serial.print("page = ");
-        Serial.print(page);
-        Serial.print("   -   ");
-        // Serial.print("pointer_flash_value = ");
-        Serial.print(*pointer_flash_value);
+        // int* page_status = (int *)rx_page_addr;
+        // Serial.print("page = ");
+        // Serial.print(page);
+        // Serial.print("   -   ");
+        // // Serial.print("page_status = ");
+        // Serial.println(*page_status);
         
-        Serial.print("   -   ");
-        Serial.println((*pointer_flash_value) == -1? "Current page": " Old data");
+        // // Serial.print("   -   ");
+        // // Serial.println((*page_status) == STATUS_EMPTY? "Current page": " Old data");
 
-        if ( *pointer_flash_value == -1 ){
-            updateCurrentPage(page);                // we found our first empty page, remember it
-            // current_page = page;                // we found our first empty page, remember it
+        // if (*page_status == STATUS_EMPTY){
+        //     updateCurrentPage(page - 1);                // we found our first empty page, remember it
+        //     break;
+        // }
+
+        bool page_empty = ((*(int *)page_satus_addr) == (int)STATUS_EMPTY)? true: false;
+        Serial.print("page ");
+        Serial.print(page);
+        Serial.print("  -  ");
+        Serial.println(page_empty? "Empty": "In use");
+
+        // we found our first empty page
+        // the page before the first empty
+        // is the current page
+        if (page_empty){
+            updateCurrentPage(page - 1);                    
             break;
         }
     }
