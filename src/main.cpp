@@ -1,6 +1,6 @@
 #include <Arduino.h>
 
-#include "myFlash.hpp"
+#include "myFlashFuctions.hpp"
 
 #define GPIO_KEY 23
 
@@ -37,16 +37,14 @@ void loop() {
 
 	while (true) {
 
-		for (auto i = 0u; i < FLASH_PAGES_PER_SECTOR / 2; ++i) {
+		for (auto i = 0u; i < FLASH_NUM_PAGES_PER_SECTOR / 2; ++i) {
 			sleep_ms(500);
-			
 			updateFlashBuffer();
 
 			updateFlashData();
 			readFlashData();
 			printFlashBuffer();
 		}
-
 
 		// waiting to restart - by button KEY
 		while (true) {
@@ -61,18 +59,14 @@ void loop() {
 					if (key_released)
 						break;
 				}
-				// while (digitalRead(GPIO_KEY)) {
-				// 	Serial.println("please release the KEY button");
-				// 	sleep_ms(100);
-				// }
 				
 				findCurrentPage();
 				readFlashData();
     			printFlashBuffer();
 				break;
 			}
-
 		}
-	}	
+	}
+
 }
 
